@@ -713,6 +713,7 @@ func (tb *Table) flushBlocksToParts(ibs []*inmemoryBlock, isFinal bool) {
 				wg.Done()
 			}()
 			pw := tb.createInmemoryPart(ibsChunk)
+			tb.notifyBackgroundMergers()
 			if pw == nil {
 				return
 			}
