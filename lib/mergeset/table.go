@@ -724,8 +724,6 @@ func (tb *Table) flushBlocksToParts(ibs []*inmemoryBlock, isFinal bool) {
 	wg.Wait()
 	putWaitGroup(wg)
 
-	tb.partsLock.Lock()
-
 	if tb.flushCallback != nil {
 		if isFinal {
 			tb.flushCallback()
