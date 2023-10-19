@@ -573,7 +573,6 @@ func putLensBuffer(lb *lensBuffer) {
 }
 
 func getInmemoryBlock() *inmemoryBlock {
-	inmemoryBlockUsage.Wait()
 	select {
 	case ib := <-ibPoolCh:
 		return ib
@@ -583,7 +582,6 @@ func getInmemoryBlock() *inmemoryBlock {
 }
 
 func putInmemoryBlock(ib *inmemoryBlock) {
-	inmemoryBlockUsage.Done()
 	ib.Reset()
 	select {
 	case ibPoolCh <- ib:
@@ -596,9 +594,3 @@ func putInmemoryBlock(ib *inmemoryBlock) {
 // Use a chan instead of sync.Pool in order to reduce memory usage on systems
 // with big number of CPU cores.
 var ibPoolCh = make(chan *inmemoryBlock, 100*cgroup.AvailableCPUs())
-
-var inmemoryBlockUsage = func() *sync.WaitGroup {
-	wg := sync.WaitGroup{}
-	wg.Add(100)
-	return &wg
-}()

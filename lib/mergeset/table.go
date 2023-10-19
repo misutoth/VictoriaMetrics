@@ -834,7 +834,10 @@ func putWaitGroup(wg *sync.WaitGroup) {
 
 var wgPool sync.Pool
 
+var inmemoryPartConcurrency = make(chan struct{}, 100)
+
 func (tb *Table) createInmemoryPart(ibs []*inmemoryBlock) *partWrapper {
+	inmemoryPartConcurrency <- struct{}{}
 	outItemsCount := uint64(0)
 	for _, ib := range ibs {
 		outItemsCount += uint64(ib.Len())
@@ -1252,9 +1255,11 @@ func (tb *Table) swapSrcWithDstParts(pws []*partWrapper, pwNew *partWrapper, dst
 
 	tb.inmemoryParts, removedInmemoryParts = removeParts(tb.inmemoryParts, m)
 	tb.fileParts, removedFileParts = removeParts(tb.fileParts, m)
+	addedInmemoryParts := 0
 	switch dstPartType {
 	case partInmemory:
 		tb.inmemoryParts = append(tb.inmemoryParts, pwNew)
+		addedInmemoryParts = 1
 	case partFile:
 		tb.fileParts = append(tb.fileParts, pwNew)
 	default:
@@ -1270,6 +1275,9 @@ func (tb *Table) swapSrcWithDstParts(pws []*partWrapper, pwNew *partWrapper, dst
 	}
 
 	tb.partsLock.Unlock()
+	for i := 0; i < removedInmemoryParts-addedInmemoryParts; i++ {
+		<-inmemoryPartConcurrency
+	}
 
 	removedParts := removedInmemoryParts + removedFileParts
 	if removedParts != len(m) {
