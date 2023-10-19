@@ -697,8 +697,6 @@ func (tb *Table) flushBlocksToParts(ibs []*inmemoryBlock, isFinal bool) {
 	if len(ibs) == 0 {
 		return
 	}
-	var pwsLock sync.Mutex
-	pws := make([]*partWrapper, 0, (len(ibs)+defaultPartsToMerge-1)/defaultPartsToMerge)
 	wg := getWaitGroup()
 	for len(ibs) > 0 {
 		n := defaultPartsToMerge
@@ -713,13 +711,13 @@ func (tb *Table) flushBlocksToParts(ibs []*inmemoryBlock, isFinal bool) {
 				wg.Done()
 			}()
 			pw := tb.createInmemoryPart(ibsChunk)
-			tb.notifyBackgroundMergers()
 			if pw == nil {
 				return
 			}
-			pwsLock.Lock()
-			pws = append(pws, pw)
-			pwsLock.Unlock()
+			tb.partsLock.Lock()
+			tb.inmemoryParts = append(tb.inmemoryParts, pw)
+			tb.notifyBackgroundMergers()
+			tb.partsLock.Unlock()
 		}(ibs[:n])
 		ibs = ibs[n:]
 	}
@@ -727,13 +725,6 @@ func (tb *Table) flushBlocksToParts(ibs []*inmemoryBlock, isFinal bool) {
 	putWaitGroup(wg)
 
 	tb.partsLock.Lock()
-	tb.inmemoryParts = append(tb.inmemoryParts, pws...)
-	for range pws {
-		if !tb.notifyBackgroundMergers() {
-			break
-		}
-	}
-	tb.partsLock.Unlock()
 
 	if tb.flushCallback != nil {
 		if isFinal {
