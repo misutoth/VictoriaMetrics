@@ -1123,7 +1123,7 @@ func (tb *Table) mergeParts(pws []*partWrapper, stopCh <-chan struct{}, isFinal 
 	// Log stats for long merges.
 	durationSecs := d.Seconds()
 	itemsPerSec := int(float64(srcItemsCount) / durationSecs)
-	var sPartString strings.Builder
+	sPartString := strings.Builder{}
 	for i, pw := range pws {
 		pType := "file"
 		if pw.mp == nil {
@@ -1132,14 +1132,16 @@ func (tb *Table) mergeParts(pws []*partWrapper, stopCh <-chan struct{}, isFinal 
 		if i > 0 {
 			sPartString.WriteString(",")
 		}
-		sPartString.WriteString(fmt.Sprintf("%s{size: %d, items: %d, blocks: %d", pType, pw.p.size, pw.p.ph.itemsCount, pw.p.ph.blocksCount))
+		sPartString.WriteString(fmt.Sprintf(" %s(%d/%d/%d)", pType, pw.p.size, pw.p.ph.itemsCount, pw.p.ph.blocksCount))
 	}
 	finalString := "non-final"
 	if isFinal {
 		finalString = "final"
 	}
-	logger.Infof("merged (%d parts, %d items, %d blocks, %d bytes) into (%s %s part, %d items, %d blocks, %d bytes) in %.3f seconds at %d items/sec to %q \nsource parts: (%s)",
-		len(pws), srcItemsCount, srcBlocksCount, srcSize, finalString, dstPartType, dstItemsCount, dstBlocksCount, dstSize, durationSecs, itemsPerSec, dstPartPath, sPartString.String())
+	logger.Infof("merged (%d parts, %d items, %d blocks, %d bytes) into (%s part, %d items, %d blocks, %d bytes) in %.3f seconds at %d items/sec to %q",
+		len(pws), srcItemsCount, srcBlocksCount, srcSize, finalString, dstItemsCount, dstBlocksCount, dstSize, durationSecs, itemsPerSec, dstPartPath)
+	partsLogMsg := sPartString.String()
+	logger.Infof("merged source parts: (%s)", partsLogMsg)
 
 	return nil
 }
