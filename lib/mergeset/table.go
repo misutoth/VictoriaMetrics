@@ -824,7 +824,7 @@ func putWaitGroup(wg *sync.WaitGroup) {
 
 var wgPool sync.Pool
 
-var inmemoryPartConcurrency = make(chan struct{}, 100)
+var inmemoryPartConcurrency = make(chan struct{}, 65)
 
 func (tb *Table) createInmemoryPart(ibs []*inmemoryBlock) *partWrapper {
 	inmemoryPartConcurrency <- struct{}{}
@@ -1123,8 +1123,23 @@ func (tb *Table) mergeParts(pws []*partWrapper, stopCh <-chan struct{}, isFinal 
 	// Log stats for long merges.
 	durationSecs := d.Seconds()
 	itemsPerSec := int(float64(srcItemsCount) / durationSecs)
-	logger.Infof("merged (%d parts, %d items, %d blocks, %d bytes) into (1 part, %d items, %d blocks, %d bytes) in %.3f seconds at %d items/sec to %q",
-		len(pws), srcItemsCount, srcBlocksCount, srcSize, dstItemsCount, dstBlocksCount, dstSize, durationSecs, itemsPerSec, dstPartPath)
+	var sPartString strings.Builder
+	for i, pw := range pws {
+		pType := "file"
+		if pw.mp == nil {
+			pType = "mem"
+		}
+		if i > 0 {
+			sPartString.WriteString(",")
+		}
+		sPartString.WriteString(fmt.Sprintf("%s{size: %d, items: %d, blocks: %d", pType, pw.p.size, pw.p.ph.itemsCount, pw.p.ph.blocksCount))
+	}
+	finalString := "non-final"
+	if isFinal {
+		finalString = "final"
+	}
+	logger.Infof("merged (%d parts, %d items, %d blocks, %d bytes) into (%s %s part, %d items, %d blocks, %d bytes) in %.3f seconds at %d items/sec to %q \nsource parts: (%s)",
+		len(pws), srcItemsCount, srcBlocksCount, srcSize, finalString, dstPartType, dstItemsCount, dstBlocksCount, dstSize, durationSecs, itemsPerSec, dstPartPath, sPartString.String())
 
 	return nil
 }
