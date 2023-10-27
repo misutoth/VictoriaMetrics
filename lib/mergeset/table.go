@@ -1078,6 +1078,7 @@ func (tb *Table) mergeParts(pws []*partWrapper, stopCh <-chan struct{}, isFinal 
 		srcItemsCount += pw.p.ph.itemsCount
 		srcBlocksCount += pw.p.ph.blocksCount
 	}
+	sPartString := tb.sourcePartsSummary(pws)
 	compressLevel := getCompressLevel(srcItemsCount)
 	bsw := getBlockStreamWriter()
 	var mpNew *inmemoryPart
@@ -1123,6 +1124,19 @@ func (tb *Table) mergeParts(pws []*partWrapper, stopCh <-chan struct{}, isFinal 
 	// Log stats for long merges.
 	durationSecs := d.Seconds()
 	itemsPerSec := int(float64(srcItemsCount) / durationSecs)
+	finalString := "non-final"
+	if isFinal {
+		finalString = "final"
+	}
+	logger.Infof("merged (%d parts, %d items, %d blocks, %d bytes) into (%s part, %d items, %d blocks, %d bytes) in %.3f seconds at %d items/sec to %q",
+		len(pws), srcItemsCount, srcBlocksCount, srcSize, finalString, dstItemsCount, dstBlocksCount, dstSize, durationSecs, itemsPerSec, dstPartPath)
+	partsLogMsg := sPartString.String()
+	logger.Infof("merged source parts: (%s)", partsLogMsg)
+
+	return nil
+}
+
+func (tb *Table) sourcePartsSummary(pws []*partWrapper) strings.Builder {
 	sPartString := strings.Builder{}
 	for i, pw := range pws {
 		pType := "file"
@@ -1134,16 +1148,7 @@ func (tb *Table) mergeParts(pws []*partWrapper, stopCh <-chan struct{}, isFinal 
 		}
 		sPartString.WriteString(fmt.Sprintf(" %s(%d/%d/%d)", pType, pw.p.size, pw.p.ph.itemsCount, pw.p.ph.blocksCount))
 	}
-	finalString := "non-final"
-	if isFinal {
-		finalString = "final"
-	}
-	logger.Infof("merged (%d parts, %d items, %d blocks, %d bytes) into (%s part, %d items, %d blocks, %d bytes) in %.3f seconds at %d items/sec to %q",
-		len(pws), srcItemsCount, srcBlocksCount, srcSize, finalString, dstItemsCount, dstBlocksCount, dstSize, durationSecs, itemsPerSec, dstPartPath)
-	partsLogMsg := sPartString.String()
-	logger.Infof("merged source parts: (%s)", partsLogMsg)
-
-	return nil
+	return sPartString
 }
 
 func getFlushToDiskDeadline(pws []*partWrapper) time.Time {
