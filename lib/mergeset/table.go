@@ -824,7 +824,7 @@ func putWaitGroup(wg *sync.WaitGroup) {
 
 var wgPool sync.Pool
 
-var inmemoryPartConcurrency = make(chan struct{}, 65)
+var inmemoryPartConcurrency = make(chan struct{}, 100)
 
 func (tb *Table) createInmemoryPart(ibs []*inmemoryBlock) *partWrapper {
 	inmemoryPartConcurrency <- struct{}{}
