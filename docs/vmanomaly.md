@@ -17,13 +17,13 @@ Please [contact us](https://victoriametrics.com/contact-us/) to find out more._*
 
 ## About
 
-**VictoriaMetrics Anomaly Detection** is a service that continuously scans Victoria Metrics time
+**VictoriaMetrics Anomaly Detection** is a service that continuously scans VictoriaMetrics time
 series and detects unexpected changes within data patterns in real-time. It does so by utilizing
 user-configurable machine learning models.
 
 It periodically queries user-specified metrics, computes an “anomaly score” for them, based on how
 well they fit a predicted distribution, taking into account periodical data patterns with trends,
-and pushes back the computed “anomaly score” to Victoria Metrics. Then, users can enable alerting
+and pushes back the computed “anomaly score” to VictoriaMetrics. Then, users can enable alerting
 rules based on the “anomaly score”.
 
 Compared to classical alerting rules, anomaly detection is more “hands-off” i.e. it allows users to
@@ -37,7 +37,7 @@ metrics.
 
 ## How?
 
-Victoria Metrics Anomaly Detection service (**vmanomaly**) allows you to apply several built-in
+VictoriaMetrics Anomaly Detection service (**vmanomaly**) allows you to apply several built-in
 anomaly detection algorithms. You can also plug in your own detection models, code doesn’t make any
 distinction between built-in models or external ones.
 
@@ -94,19 +94,25 @@ Currently, vmanomaly ships with a few common models:
    A simple moving window of quantiles. Easy to use, easy to understand, but not as powerful as 
    other models.
 
+1. **Isolation Forest**
+
+   Detects anomalies using binary trees. It works for both univariate and multivariate data. Be aware of [the curse of dimensionality](https://en.wikipedia.org/wiki/Curse_of_dimensionality) in the case of multivariate data - we advise against using a single model when handling multiple time series *if the number of these series significantly exceeds their average length (# of data points)*.
+   
+   The algorithm has a linear time complexity and a low memory requirement, which works well with high-volume data. See [scikit-learn.org documentation](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.IsolationForest.html) for Isolation Forest.
+
 
 ### Examples
 For example, here’s how Prophet predictions could look like on a real-data example  
 (Prophet auto-detected seasonality interval):
 
-<img alt="propher-example" src="vmanomaly-prophet-example.png">
+<img alt="propher-example" src="vmanomaly-prophet-example.webp">
 
 And here’s what Holt-Winters predictions real-world data could look like (seasonality manually 
  set to 1 week). Notice that it predicts anomalies in 
 different places than Prophet because the model noticed there are usually spikes on Friday 
 morning, so it accounted for that:
 
-<img alt="holtwinters-example" src="vmanomaly-holtwinters-example.png">
+<img alt="holtwinters-example" src="vmanomaly-holtwinters-example.webp">
 
 ## Process
 Upon starting, vmanomaly queries the initial range of data, and trains its model (“fit” by convention).
@@ -115,48 +121,72 @@ Then, reads new data from VictoriaMetrics, according to schedule, and invokes it
 “anomaly score” for each data point. The anomaly score ranges from 0 to positive infinity. 
 Values less than 1.0 are considered “not an anomaly”, values greater or equal than 1.0 are 
 considered “anomalous”, with greater values corresponding to larger anomaly.
-Then, VMAnomaly pushes the metric to vminsert (under the user-configured metric name, 
+Then, vmanomaly pushes the metric to vminsert (under the user-configured metric name, 
 optionally preserving labels).
 
  
 ## Usage
-The vmanomaly accepts only one parameter -- config file path:
+> Starting from v1.5.0, vmanomaly requires a license key to run. You can obtain a trial license key [here](https://victoriametrics.com/products/enterprise/trial/).
 
-```sh
-python3 vmanomaly.py config_zscore.yaml
-```
-or
-```sh
-python3 -m vmanomaly config_zscore.yaml
-```
+> See [Getting started guide](https://docs.victoriametrics.com/guides/guide-vmanomaly-vmalert.html).
 
-It is also possible to split up config into multiple files, just list them all in the command line:
+### Config file
+There are 4 required sections in config file:
 
-```sh
-python3 -m vmanomaly model_prophet.yaml io_csv.yaml scheduler_oneoff.yaml
+* `scheduler` - defines how often to run and make inferences, as well as what timerange to use to train the model. 
+* `model` - specific model parameters and configurations, 
+* `reader` - how to read data and where it is located
+* `writer` - where and how to write the generated output.
+
+[`monitoring`](#monitoring) - defines how to monitor work of *vmanomaly* service. This config section is *optional*.
+
+#### Config example
+Here is an example of config file that will run FB Prophet model, that will be retrained every 2 hours on 14 days of previous data. It will generate inference (including `anomaly_score` metric) every 1 minute.
+
+
+You need to put your datasource urls to use it:
+
+```yaml
+scheduler:
+  infer_every: "1m"
+  fit_every: "2h"
+  fit_window: "14d"
+
+model:
+  class: "model.prophet.ProphetModel"
+  args:
+    interval_width: 0.98
+
+reader:
+  datasource_url: [YOUR_DATASOURCE_URL] #Example: "http://victoriametrics:8428/"
+  queries:
+    cache: "sum(rate(vm_cache_entries))"
+
+writer:
+  datasource_url: [YOUR_DATASOURCE_URL] # Example: "http://victoriametrics:8428/"
 ```
 
 ### Monitoring
 
-vmanomaly can be monitored by using push or pull approach.
+*vmanomaly* can be monitored by using push or pull approach.
 It can push metrics to VictoriaMetrics or expose metrics in Prometheus exposition format.
 
 #### Push approach
 
-vmanomaly can push metrics to VictoriaMetrics single-node or cluster version.
+*vmanomaly* can push metrics to VictoriaMetrics single-node or cluster version.
 In order to enable push approach, specify `push` section in config file:
 
 ```yaml
 monitoring:
    push:
-      url: "http://victoriametrics:8428/"
+      url: [YOUR_DATASOURCE_URL] #Example: "http://victoriametrics:8428/"
       extra_labels:
          job: "vmanomaly-push"
 ```
 
 #### Pull approach
 
-vmanomaly can export internal metrics in Prometheus exposition format at `/metrics` page.
+*vmanomaly* can export internal metrics in Prometheus exposition format at `/metrics` page.
 These metrics can be scraped via [vmagent](https://docs.victoriametrics.com/vmagent.html) or Prometheus.
 
 In order to enable pull approach, specify `pull` section in config file:
@@ -170,10 +200,30 @@ monitoring:
 
 This will expose metrics at `http://0.0.0.0:8080/metrics` page.
 
-### Licensing
+### Run vmanomaly Docker Container
 
-Starting from v1.5.0 vmanomaly requires a license key to run. You can obtain a trial license
-key [here](https://victoriametrics.com/products/enterprise/trial/).
+To use *vmanomaly* you need to pull docker image:
+
+```sh
+docker pull us-docker.pkg.dev/victoriametrics-test/public/vmanomaly-trial:latest
+```
+
+You can put a tag on it for your convinience:
+
+```sh
+docker image tag us-docker.pkg.dev/victoriametrics-test/public/vmanomaly-trial vmanomaly
+```
+Here is an example of how to run *vmanomaly* docker container with [license file](#licensing):
+
+```sh
+docker run -it --net [YOUR_NETWORK] \
+               -v [YOUR_LICENSE_FILE_PATH]:/license.txt \
+               -v [YOUR_CONFIG_FILE_PATH]:/config.yml \
+               vmanomaly /config.yml \
+               --license-file=/license.txt
+```
+
+### Licensing
 
 The license key can be passed via the following command-line flags:
 ```
@@ -188,10 +238,7 @@ The license key can be passed via the following command-line flags:
                         verification offline.
 ```
 
-Usage example:
-```
-python3 -m vmanomaly --license-file /path/to/license_file.yaml config.yaml
-```
+
 
 In order to make it easier to monitor the license expiration date, the following metrics are exposed(see
 [Monitoring](#monitoring) section for details on how to scrape them):
@@ -206,7 +253,7 @@ vm_license_expires_in_seconds 4.886608e+06
 ```
 
 Example alerts for [vmalert](https://docs.victoriametrics.com/vmalert.html):
-{% raw %}
+
 ```yaml
 groups:
   - name: vm-license
@@ -230,4 +277,4 @@ groups:
           description: "{{ $labels.instance }} of job {{ $labels.job }} license expires in {{ $value | humanizeDuration }}. 
             Please make sure to update the license before it expires."
 ```
-{% endraw %}
+
